@@ -10,6 +10,222 @@ const {
   reset_password_email,
 } = require("../../utils/email_transport_config");
 const verifyEmailSchema = require("../../models/verification/verifyEmailTokenSchema");
+const twilioClient = require('../../config/twilioConfig');
+const googleClient = require('../../config/googleConfig');
+
+
+const registerOrLoginWithGoogle = async (req, res, next) => {
+  const { token } = req.body;
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name } = payload;
+
+    let user = await User_Auth_Schema.findOne({ googleId });
+
+    if (!user) {
+      user = await User_Auth_Schema.create({
+        googleId,
+        email,
+        username: name,
+      });
+
+      return res.json({
+        message: "Registered successfully!",
+        data: user,
+      });
+    } else {
+      return res.json({
+        message: "Logged in successfully!",
+        data: user,
+      });
+    }
+  } catch (error) {
+    return next(error);
+  }
+};
+
+
+const verify_mobile_number = async (req, res, next) => {
+  const { code, phoneNumber } =  req.body;
+  try {
+    const user = await User_Auth_Schema.findOne({ phoneNumber });
+  if (!user) {
+    return res.json({
+      message: "Number is incorrect",
+    });
+  }
+  if(user.verificationCode == code)
+    {
+      user.phoneVerified = true;
+      user.save();
+       const generate_tokens = await JWT_Generate_Token_Handle.save_user_tokens(
+        user._id
+      );
+  
+      const save_tokens = await User_Tokens_Schema.create({
+        ...generate_tokens,
+        user_id: user._id,
+  
+      });
+  
+      const tokens_dto = new Auth_Token_DTO(save_tokens);
+  
+      return res.json({
+        message: "PhoneNumber Verification successfully done!",
+        data: user,
+        tokens: tokens_dto,
+      });
+
+
+    }
+    else{
+      return res.json({
+        message: "Code is incorrect",
+      });
+    }
+  } catch (error) {
+    return res.status(500).json({message:error.message})
+  }
+  
+
+}
+const verify_login_code = async (req, res, next) => {
+  const { code, phoneNumber } =  req.body;
+  try {
+    const user = await User_Auth_Schema.findOne({ phoneNumber });
+  if (!user) {
+    return res.json({
+      message: "Number is incorrect",
+    });
+  }
+  if(user.logincode == code)
+    {
+       const generate_tokens = await JWT_Generate_Token_Handle.save_user_tokens(
+        user._id
+      );
+  
+      const save_tokens = await User_Tokens_Schema.create({
+        ...generate_tokens,
+        user_id: user._id,
+  
+      });
+  
+      const tokens_dto = new Auth_Token_DTO(save_tokens);
+  
+      return res.json({
+        message: "Logged in successfully!",
+        data: user,
+        tokens: tokens_dto,
+      });
+
+
+    }
+    else{
+      return res.json({
+        message: "Code is incorrect",
+      });
+    }
+  } catch (error) {
+    return res.status(500).json({message:error.message})
+  }
+  
+
+}
+
+const register_user_with_mobile = async (req, res, next) => {
+  const { body, user_id } = req;
+  try {
+    const {
+      phoneNumber,
+    } = body;
+    
+    if(!phoneNumber)
+      {
+        return res.status(409).json({message:"phoneNumber is missing"});
+      }
+    const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
+    const userNumber = phoneNumber.slice(-4);
+    const is_number_exist = await User_Auth_Schema.exists({ phoneNumber });
+    if (is_number_exist) {
+      const find_user = await User_Auth_Schema.findOne({ phoneNumber });
+      if (find_user.phoneVerified==true) {
+      find_user.logincode = verificationCode;
+      find_user.save();
+      // console.log(verificationCode)
+      // await twilioClient.messages.create({
+      //   body: `Your verification code is ${verificationCode}`,
+      //   from: process.env.TWILIO_PHONE_NUMBER,
+      //   to: phoneNumber
+      // });
+
+      return res.json({
+        message: "Login Code Sent to user successfully!",
+        user: find_user
+      });
+    }
+    else
+    {
+      find_user.verificationCode = verificationCode;
+      find_user.save();
+
+      return res.json({
+        message: " For using phonenumber to login , you need to verify your number first. A verification code has been sent to your number.",
+        user: find_user
+      });
+    }
+      //Send Twilio Code 
+
+
+      // const generate_tokens = await JWT_Generate_Token_Handle.save_user_tokens(
+      //   find_user._id
+      // );
+  
+      // const save_tokens = await User_Tokens_Schema.create({
+      //   ...generate_tokens,
+      //   user_id: find_user._id,
+  
+      // });
+  
+      // const tokens_dto = new Auth_Token_DTO(save_tokens);
+  
+      // return res.json({
+      //   message: "logged in successfully!",
+      //   data: find_user,
+      //   tokens: tokens_dto,
+      // });
+
+    }
+    else
+    {
+
+
+      const store_user_data = {
+        phoneNumber,
+        username: "Usr"+userNumber,
+        verificationCode: verificationCode
+      };
+      
+      const save_user = await User_Auth_Schema.create({
+        ...store_user_data,
+      });
+
+
+      return res.json({
+          message: "User Registered successfully! Code sent to user number",
+        });
+ 
+    }
+
+    
+  } catch (error) {
+    return next(error);
+  }
+};
 
 const register_user = async (req, res, next) => {
   const { body, user_id } = req;
@@ -325,5 +541,9 @@ module.exports = {
   reset_user_password_request,
   verify_OTP_and_create_password,
   verify_reset_password_OTP,
+  register_user_with_mobile,
+  verify_mobile_number,
+  verify_login_code,
+  registerOrLoginWithGoogle
 
 };

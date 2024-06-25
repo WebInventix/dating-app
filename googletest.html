@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Sign-In Test</title>
+  <script src="https://apis.google.com/js/platform.js" async defer></script>
+  <meta name="google-signin-client_id" content="694896823625-pptplpjk6vej082mrstr3cdqqt2tfi7a.apps.googleusercontent.com">
+  <script>
+    function onSignIn(googleUser) {
+      const id_token = googleUser.getAuthResponse().id_token;
+
+      fetch('/api/auth/google', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token: id_token }),
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log('Success:', data);
+        document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+      })
+      .catch((error) => {
+        console.error('Error:', error);
+        document.getElementById('result').textContent = 'Error: ' + error;
+      });
+    }
+
+    function signOut() {
+      const auth2 = gapi.auth2.getAuthInstance();
+      auth2.signOut().then(() => {
+        console.log('User signed out.');
+      });
+    }
+  </script>
+</head>
+<body>
+  <h1>Google Sign-In Test</h1>
+  <div class="g-signin2" data-onsuccess="onSignIn"></div>
+  <button onclick="signOut()">Sign out</button>
+  <pre id="result"></pre>
+</body>
